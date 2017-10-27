@@ -1,0 +1,229 @@
+---
+title: Catastropic Storms
+author: Nikolai Alexander
+date: 10/29/2017
+output: html_document
+---
+  
+## Introduction
+
+For this assignment, we are looking for which storms are the most catastrophic. In order to find this, we need to look at 2 categories: **harm to population health** and **economic destruction**.
+
+## Data Processing
+
+The first thing we need to do is load the data set. This is pretty easy, as it is a csv file. However, it is hidden inside of a *bz2* file. Easy fix; tell R that this file is a *bz* file:
+```{r load_data, cache=TRUE}
+  data <- read.csv(bzfile("StormData.csv.bz2"), stringsAsFactors = FALSE)
+  head(data)
+```
+
+Since there seems to be a lot of data here, we can look at the column names to see what we need.
+```{r column_names}
+  colnames(data)
+```
+
+For this analysis, we only care about they type of storm, the data involving personal health, and destruction costs. So we only need the columns: *EVTYPE*, *FATALITIES*, *INJURIES*, *PROPDMG*, *PROPDMGEXP*, *CROPDMG*, and *CROPDMGEXP*. So, we can clean up this data set to make it easier to read:
+```{r clean_data, cache=TRUE}
+  colnames(data) <- tolower(colnames(data))
+  clean_data <- data.frame(
+      data$evtype,
+      data$fatalities,
+      data$injuries,
+      data$propdmg,
+      data$propdmgexp,
+      data$cropdmg,
+      data$cropdmgexp,
+      stringsAsFactors = FALSE
+    )
+  colnames(clean_data) <- gsub("data.","", colnames(clean_data))
+
+  head(clean_data)
+```
+
+This data set is much easier to look at... There is only one thing... *propdmgexp* and *cropdmgexp* are character variables, when they should be exponents to the *propdmg* and *cropdmg*. In order to change these to numbers, we first need to look at what values there are:
+```{r exp_values}
+  unique(clean_data$propdmgexp)
+  unique(clean_data$cropdmgexp)
+```
+
+Now that we can see the character values, we need to assign them to numerical values. Some values are weird (i.e. *?*, *+*, etc.); we can assign these values to 0.
+
+```{r num_exp}
+  clean_data$propdmgexp[clean_data$propdmgexp == "B"] = 9
+  clean_data$propdmgexp[clean_data$propdmgexp == "h" | clean_data$propdmgexp == "H"] = 2
+  clean_data$propdmgexp[clean_data$propdmgexp == "K"] = 3
+  clean_data$propdmgexp[clean_data$propdmgexp == "m" | clean_data$propdmgexp == "M"] = 6
+  clean_data$propdmgexp[
+    clean_data$propdmgexp == "+" |
+    clean_data$propdmgexp == "?"|
+    clean_data$propdmgexp == "-"
+  ] = NA
+ clean_data$propdmgexp[clean_data$propdmgexp == ""] = 0  
+  clean_data$propdmgexp <- as.numeric(clean_data$propdmgexp)
+
+  unique(clean_data$propdmgexp)
+
+  clean_data$cropdmgexp[clean_data$cropdmgexp == ""] = 0
+  clean_data$cropdmgexp[clean_data$cropdmgexp == "M" | clean_data$cropdmgexp == "m"] = 6
+  clean_data$cropdmgexp[clean_data$cropdmgexp == "K" | clean_data$cropdmgexp == "k"] = 3
+  clean_data$cropdmgexp[clean_data$cropdmgexp == "B"] = 9
+  clean_data$cropdmgexp[clean_data$cropdmgexp == "?"] = NA
+  clean_data$cropdmgexp <- as.numeric(clean_data$cropdmgexp)
+  
+  unique(clean_data$cropdmgexp)
+```
+
+Now we want to factor *propdmgexp* and *cropdmgexp* into *propdmg* and *cropdmg*, but first we need to make sure *propdmg* and *cropdmg* are numerical.
+```{r class_check}
+  class(clean_data$propdmg)
+  class(clean_data$cropdmg)
+```
+
+Since these are both numeric, we can carry on with combining the columns.
+```{r final_data}
+  clean_data$propdmg = clean_data$propdmg * 10^clean_data$propdmgexp
+
+  clean_data$cropdmg = clean_data$cropdmg * 10^clean_data$cropdmgexp
+
+  final_data = data.frame(
+    clean_data$evtype,
+    clean_data$fatalities,
+    clean_data$injuries,
+    clean_data$propdmg,
+    clean_data$cropdmg,
+    stringsAsFactors = FALSE
+    )  
+  colnames(final_data) <- gsub("clean_data.","", colnames(final_data))
+
+  head(final_data)
+```
+
+Finally, we need to ask ourselves, what is the best way to find the most destructive storms, both economically and physically? My solution is to find the mean of each variable according to each storm. 
+```{r mean_storms, warning=FALSE}
+  mean_data <- aggregate(
+    final_data,
+    by = list(final_data$evtype),
+    mean
+  )
+  mean_data$evtype <- NULL
+  colnames(mean_data)<- gsub("Group.1","evtype", colnames(mean_data))
+
+  mean_data$evtype <- toupper(mean_data$evtype)
+  
+  head(mean_data)
+```
+
+Now, we have a clean data set that we can use to answer the following questions!
+
+## Results
+### Across the United States, which types of events are most harmful with respect to population health?
+
+To answer this question, we need to look at the *fatalities* and *injuries* column; specifically the highest rates. In order to do this, first we need to sort the dataframe in terms of these values.
+
+```{r most_fatal}
+  fatal_df <- mean_data[with(mean_data, order(-fatalities)),]
+
+head(fatal_df)
+```
+
+```{r most_inj}
+  inj_df <- mean_data[with(mean_data, order(-injuries)),]
+
+head(inj_df)
+```
+
+So we now have 2 data frames, sorted from most fatalities and most injuries. Now we can look at a graph. However, there are many many storms. Let's just look at the top 10.
+
+```{r top_harmful}
+  top_fatal <- fatal_df[1:10,]
+
+  print(top_fatal)
+
+  top_inj <- inj_df[1:10,]
+  
+  print(top_inj)
+```
+
+Now we can compare graphs...
+```{r plot_harmful, warning = FALSE}
+  library(ggplot2)
+  library(gridExtra)
+
+  fatal_bar <- ggplot()+
+    geom_bar(
+      data = top_fatal, 
+      aes(x = evtype, y = fatalities),
+      stat = "identity"
+    )+
+    xlab("Event")+
+    ylab("# of Fatalities")+
+    ggtitle("Top 10 Most Fatalities")+
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+  
+  inj_bar <- ggplot()+
+    geom_bar(
+      data = top_inj,
+      aes(x = evtype, y = injuries),
+      stat = "identity"
+    )+
+    xlab("Event")+
+    ylab("# of Injuries")+
+    ggtitle("Top 10 Most Injuries")+
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+  
+  grid.arrange(fatal_bar, inj_bar, ncol = 2, top = "Most Dangerous Events")
+```
+
+There, now we have the most harmful events to physical health. Tornadoes have the most fatalies, with 25 fatalities, and Heat Waves have the highest rate of injury, with 70 injuries. However Tropical Storm Gordon is no event to be ignored either, making the top three in both injuries (43) and fatalities (8).
+
+### Across the United States, which types of events have the greatest economic consequences?
+
+For this, we are going through a similar process of analysing the data as we did when looking physical harm caused by the events. However, we are looking at the economic cost of the events. So this time, we only care about the *propdmg* and *cropdmg*. Let's look back at original mean data frame.
+```{r orig_df}
+  head(mean_data)
+```
+
+Since we are looking at the total economic damage of the events, we can find the sum of *propdmg* and *cropdmg* to make the analysis easier.
+```{r tot_dmg}
+
+  tot_dmg <- data.frame(
+    mean_data$evtype,
+    mean_data$propdmg + mean_data$cropdmg
+  )
+ colnames(tot_dmg) <- c("evtype", "totdmg")
+
+ tot_dmg <- tot_dmg[with(tot_dmg, order(-totdmg)),] 
+
+ head(tot_dmg)
+```
+
+Now, we have the data sorted from the most amount of economic damage to the least. Again, we only need to look at the top 10, so we can pull that from the data frame.
+
+```{r top_dmg}
+  top_dmg <- tot_dmg[1:10,]
+
+  print(top_dmg)
+```
+
+To visualize this data, we should look at another bar plot comparing the 10. However, as you can see, the total damage is pretty high for many of these (some in the billions!). To make the graph easier to read, we can divide *totdmg* by 1 billion.
+
+```{r plot_dmg}
+  ggplot()+
+    geom_bar(
+      data = top_dmg,
+      aes(x = evtype, y = totdmg/10^9),
+      stat = "identity"
+    )+
+    xlab("Event")+
+    ylab("Total Damage in Billions ($B)")+
+    ggtitle("Top 10 Most Economically Damaging Events")+
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+```
+
+Tornadoes win again with 1.6 billion dollars in damage. Heavy rain comes in a close second with 1.2 billion dollars in damage.
