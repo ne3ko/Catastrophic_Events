@@ -2,7 +2,9 @@
 title: Catastropic Storms
 author: Nikolai Alexander
 date: 10/29/2017
-output: html_document
+output: 
+  html_document:
+    keep_md: TRUE
 ---
   
 ## Introduction
